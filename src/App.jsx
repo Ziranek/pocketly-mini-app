@@ -18,7 +18,7 @@ function App() {
         tg.setHeaderColor("#ffffff");
         tg.setBackgroundColor("#f4f7f5");
       } catch (error) {
-        // Some Telegram versions may not support these settings.
+        console.log("Telegram display settings unavailable.");
       }
 
       setTelegramUser(tg.initDataUnsafe?.user || null);
@@ -87,7 +87,28 @@ function App() {
     }
   };
 
-  const firstName = telegramUser?.first_name;
+  const fullName = telegramUser
+    ? [telegramUser.first_name, telegramUser.last_name]
+        .filter(Boolean)
+        .join(" ")
+    : "";
+
+  const profileName = fullName || "Pocketly Member";
+
+  const profilePhoto = telegramUser?.photo_url;
+  const username = telegramUser?.username;
+  const telegramId = telegramUser?.id;
+  const language = telegramUser?.language_code;
+
+  const ProfileRow = ({ icon, label, value }) => (
+    <div className="activity">
+      <div className="activity-icon">{icon}</div>
+      <div className="activity-info">
+        <small>{label}</small>
+        <strong>{value || "Not available"}</strong>
+      </div>
+    </div>
+  );
 
   const renderContent = () => {
     if (tab === "Rewards") {
@@ -133,39 +154,127 @@ function App() {
     if (tab === "Profile") {
       return (
         <section className="section">
-          <h3>Your profile</h3>
+          <h3>My profile</h3>
 
-          <div className="balance">
-            <p>POCKETLY MEMBER</p>
-            <h1 style={{ fontSize: "27px" }}>
-              {firstName || "Welcome"}
-            </h1>
-            <small>
-              {telegramUser?.username
-                ? "@" + telegramUser.username
-                : "Your Pocketly profile"}
-            </small>
-          </div>
+          <div
+            style={{
+              background: "#ffffff",
+              border: "1px solid #e9efeb",
+              borderRadius: "22px",
+              padding: "25px 18px",
+              textAlign: "center",
+              marginBottom: "22px",
+              boxShadow: "0 4px 14px rgba(24,54,37,.035)"
+            }}
+          >
+            <div
+              style={{
+                width: "88px",
+                height: "88px",
+                margin: "0 auto 15px",
+                borderRadius: "50%",
+                overflow: "hidden",
+                display: "grid",
+                placeItems: "center",
+                background: "#e8f5ed",
+                border: "4px solid #dff3e7",
+                fontSize: "35px"
+              }}
+            >
+              {profilePhoto ? (
+                <img
+                  src={profilePhoto}
+                  alt="Telegram profile"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover"
+                  }}
+                />
+              ) : (
+                "👤"
+              )}
+            </div>
 
-          <div className="activity">
-            <div className="activity-icon">👤</div>
-            <div className="activity-info">
-              <strong>Account status</strong>
-              <small>New member</small>
+            <h2
+              style={{
+                fontFamily: "Manrope, sans-serif",
+                fontSize: "21px",
+                fontWeight: 800,
+                color: "#192c22"
+              }}
+            >
+              {profileName}
+            </h2>
+
+            <p
+              style={{
+                marginTop: "6px",
+                color: "#087b50",
+                fontSize: "13px",
+                fontWeight: 600
+              }}
+            >
+              {username ? `@${username}` : "Telegram username unavailable"}
+            </p>
+
+            <div
+              style={{
+                display: "inline-block",
+                marginTop: "16px",
+                padding: "7px 13px",
+                background: "#e8f6ed",
+                color: "#087b50",
+                borderRadius: "20px",
+                fontSize: "11px",
+                fontWeight: 700
+              }}
+            >
+              Pocketly member
             </div>
           </div>
 
-          <div className="activity">
-            <div className="activity-icon">🎁</div>
-            <div className="activity-info">
-              <strong>Points balance</strong>
-              <small>0 PTS</small>
-            </div>
-          </div>
+          <h3 style={{ fontSize: "16px", marginBottom: "14px" }}>
+            Account information
+          </h3>
 
-          <p style={{ marginTop: "18px" }}>
-            Your Pocketly account information.
-          </p>
+          <ProfileRow
+            icon="👤"
+            label="Full name"
+            value={fullName}
+          />
+
+          <ProfileRow
+            icon="✉️"
+            label="Username"
+            value={username ? `@${username}` : null}
+          />
+
+          <ProfileRow
+            icon="🆔"
+            label="Telegram ID"
+            value={telegramId ? String(telegramId) : null}
+          />
+
+          <ProfileRow
+            icon="🌍"
+            label="Language"
+            value={language ? language.toUpperCase() : null}
+          />
+
+          <ProfileRow
+            icon="🔐"
+            label="Connection"
+            value={telegramUser ? "Telegram profile detected" : "Not detected"}
+          />
+
+          <div className="notice" style={{ marginTop: "20px" }}>
+            <p>
+              Your profile information is displayed from Telegram.
+              Secure account verification will be handled by Pocketly's
+              backend before rewards or withdrawals are processed.
+            </p>
+          </div>
         </section>
       );
     }
@@ -174,8 +283,8 @@ function App() {
       <>
         <section className="welcome">
           <p>
-            {firstName
-              ? `WELCOME, ${firstName.toUpperCase()}`
+            {telegramUser?.first_name
+              ? `WELCOME, ${telegramUser.first_name.toUpperCase()}`
               : "WELCOME TO POCKETLY"}
           </p>
 
@@ -262,19 +371,27 @@ function App() {
           className="avatar"
           onClick={() => setTab("Profile")}
           aria-label="Open profile"
+          style={{
+            border: "none",
+            padding: 0,
+            overflow: "hidden",
+            cursor: "pointer"
+          }}
         >
-          {telegramUser?.photo_url
-            ? <img
-                src={telegramUser.photo_url}
-                alt="Profile"
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                  borderRadius: "50%"
-                }}
-              />
-            : "👤"}
+          {profilePhoto ? (
+            <img
+              src={profilePhoto}
+              alt="Profile"
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                borderRadius: "50%"
+              }}
+            />
+          ) : (
+            "👤"
+          )}
         </button>
       </header>
 
