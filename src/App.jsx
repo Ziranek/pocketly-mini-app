@@ -6,11 +6,20 @@ function App() {
   const [message, setMessage] = useState("");
   const [adLoading, setAdLoading] = useState(false);
   const [telegramUser, setTelegramUser] = useState(null);
+  const [points, setPoints] = useState(0);
+  const [connectionStatus, setConnectionStatus] = useState("Connecting...");
 
   useEffect(() => {
-    const tg = window.Telegram?.WebApp;
+    let active = true;
 
-    if (tg) {
+    const connectPocketly = async () => {
+      const tg = window.Telegram?.WebApp;
+
+      if (!tg) {
+        setConnectionStatus("Open Pocketly in Telegram");
+        return;
+      }
+
       tg.ready();
       tg.expand();
 
@@ -21,8 +30,53 @@ function App() {
         console.log("Telegram display settings unavailable.");
       }
 
-      setTelegramUser(tg.initDataUnsafe?.user || null);
-    }
+      const user = tg.initDataUnsafe?.user || null;
+
+      if (active) setTelegramUser(user);
+
+      if (!tg.initData) {
+        setConnectionStatus("Telegram verification unavailable");
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/me", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            initData: tg.initData
+          })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || "Verification failed");
+        }
+
+        if (active) {
+          setPoints(Number(result.profile.points) || 0);
+          setConnectionStatus("Verified and connected");
+        }
+      } catch (error) {
+        console.error("Pocketly connection error:", error);
+
+        if (active) {
+          setConnectionStatus("Verification failed");
+          setMessage(
+            "We couldn't verify your account. Please reopen Pocketly and try again."
+          );
+        }
+      }
+    };
+
+    connectPocketly();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const notify = (text) => {
@@ -31,6 +85,11 @@ function App() {
 
   const watchAdvertisements = async () => {
     if (adLoading) return;
+
+    if (connectionStatus !== "Verified and connected") {
+      notify("Please wait until your Telegram account is verified.");
+      return;
+    }
 
     const showAd = window.show_12353520;
 
@@ -47,12 +106,10 @@ function App() {
 
       if (result?.reward_event_type === "valued") {
         notify(
-          "Rewarded ad event detected! Your reward is awaiting secure verification."
+          "Rewarded ad detected! Your reward is awaiting secure verification."
         );
       } else {
-        notify(
-          "A rewarded ad was not confirmed. No points have been added."
-        );
+        notify("A rewarded ad was not confirmed. No points were added.");
       }
     } catch (error) {
       notify("Advertisement unavailable. Please try again later.");
@@ -94,7 +151,6 @@ function App() {
     : "";
 
   const profileName = fullName || "Pocketly Member";
-
   const profilePhoto = telegramUser?.photo_url;
   const username = telegramUser?.username;
   const telegramId = telegramUser?.id;
@@ -110,17 +166,20 @@ function App() {
     </div>
   );
 
+  const BalanceCard = ({ title }) => (
+    <div className="balance">
+      <p>{title}</p>
+      <h1>{points.toLocaleString()} <span>PTS</span></h1>
+      <small>Your verified rewards will appear here.</small>
+    </div>
+  );
+
   const renderContent = () => {
     if (tab === "Rewards") {
       return (
         <section className="section">
           <h3>Your rewards</h3>
-
-          <div className="balance">
-            <p>AVAILABLE POINTS</p>
-            <h1>0 <span>PTS</span></h1>
-            <small>Your verified rewards will appear here.</small>
-          </div>
+          <BalanceCard title="AVAILABLE POINTS" />
 
           <button
             className="action-button"
@@ -191,9 +250,7 @@ function App() {
                     objectFit: "cover"
                   }}
                 />
-              ) : (
-                "👤"
-              )}
+              ) : "👤"}
             </div>
 
             <h2
@@ -238,11 +295,7 @@ function App() {
             Account information
           </h3>
 
-          <ProfileRow
-            icon="👤"
-            label="Full name"
-            value={fullName}
-          />
+          <ProfileRow icon="👤" label="Full name" value={fullName} />
 
           <ProfileRow
             icon="✉️"
@@ -264,15 +317,14 @@ function App() {
 
           <ProfileRow
             icon="🔐"
-            label="Connection"
-            value={telegramUser ? "Telegram profile detected" : "Not detected"}
+            label="Verification"
+            value={connectionStatus}
           />
 
           <div className="notice" style={{ marginTop: "20px" }}>
             <p>
-              Your profile information is displayed from Telegram.
-              Secure account verification will be handled by Pocketly's
-              backend before rewards or withdrawals are processed.
+              Your Telegram account is verified through Pocketly's
+              secure backend before account rewards are processed.
             </p>
           </div>
         </section>
@@ -298,11 +350,7 @@ function App() {
           </p>
         </section>
 
-        <section className="balance">
-          <p>YOUR POINT BALANCE</p>
-          <h1>0 <span>PTS</span></h1>
-          <small>Your verified rewards will appear here.</small>
-        </section>
+        <BalanceCard title="YOUR POINT BALANCE" />
 
         <section className="section">
           <h3>Explore activities</h3>
@@ -322,10 +370,7 @@ function App() {
             <span>→</span>
           </button>
 
-          <button
-            className="activity"
-            onClick={() => setTab("Rewards")}
-          >
+          <button className="activity" onClick={() => setTab("Rewards")}>
             <div className="activity-icon">🎁</div>
             <div className="activity-info">
               <strong>My rewards</strong>
@@ -334,10 +379,7 @@ function App() {
             <span>→</span>
           </button>
 
-          <button
-            className="activity"
-            onClick={inviteFriends}
-          >
+          <button className="activity" onClick={inviteFriends}>
             <div className="activity-icon">👥</div>
             <div className="activity-info">
               <strong>Invite friends</strong>
@@ -389,9 +431,7 @@ function App() {
                 borderRadius: "50%"
               }}
             />
-          ) : (
-            "👤"
-          )}
+          ) : "👤"}
         </button>
       </header>
 
