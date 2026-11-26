@@ -1,19 +1,75 @@
 
-import React from "react";
+import React, { useState } from "react";
 
 function App() {
-  return (
-    <div className="app">
-      <header className="topbar">
-        <div className="logo">P</div>
-        <div>
-          <h2>Pocketly</h2>
-          <small>Your rewards, your way.</small>
-        </div>
-        <div className="avatar">👤</div>
-      </header>
+  const [tab, setTab] = useState("Home");
+  const [message, setMessage] = useState("");
 
-      <main>
+  const notify = (text) => {
+    setMessage(text);
+  };
+
+  const inviteFriends = async () => {
+    const link = "https://t.me/Pocketlyearnbot";
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Join Pocketly",
+          text: "Join me on Pocketly and explore rewards!",
+          url: link
+        });
+      } else {
+        await navigator.clipboard.writeText(link);
+        notify("Invite link copied!");
+      }
+    } catch (error) {
+      notify("You can share this link: " + link);
+    }
+  };
+
+  const renderContent = () => {
+    if (tab === "Rewards") {
+      return (
+        <section className="section">
+          <h3>Your rewards</h3>
+          <div className="balance">
+            <h1>0 <span>PTS</span></h1>
+            <small>Your points will appear here.</small>
+          </div>
+          <button className="action-button" onClick={() =>
+            notify("Daily rewards are coming soon!")
+          }>
+            Check daily rewards
+          </button>
+        </section>
+      );
+    }
+
+    if (tab === "Invite") {
+      return (
+        <section className="section">
+          <h3>Invite friends</h3>
+          <p>Share Pocketly with your friends.</p>
+          <button className="action-button" onClick={inviteFriends}>
+            Invite friends
+          </button>
+        </section>
+      );
+    }
+
+    if (tab === "Profile") {
+      return (
+        <section className="section">
+          <h3>Your profile</h3>
+          <p>Welcome to Pocketly!</p>
+          <p>Account status: New member</p>
+          <p>Points: 0</p>
+        </section>
+      );
+    }
+
+    return (
+      <>
         <section className="welcome">
           <p>WELCOME TO POCKETLY</p>
           <h1>Earn rewards<br />as you explore.</h1>
@@ -28,45 +84,85 @@ function App() {
 
         <section className="section">
           <h3>Daily activities</h3>
-          <div className="activity">
+
+          <button className="activity" onClick={() =>
+            notify("Rewarded advertisements are being connected. Please check back soon.")
+          }>
             <div className="activity-icon">▶️</div>
             <div className="activity-info">
               <strong>Watch advertisements</strong>
-              <small>Discover available rewarded ads.</small>
+              <small>Watch ads and earn points.</small>
             </div>
             <span>→</span>
-          </div>
+          </button>
 
-          <div className="activity">
+          <button className="activity" onClick={() => {
+            setTab("Rewards");
+            notify("Welcome to your rewards page!");
+          }}>
             <div className="activity-icon">🎁</div>
             <div className="activity-info">
               <strong>Daily rewards</strong>
-              <small>Check back for daily activities.</small>
+              <small>Explore your reward activities.</small>
             </div>
             <span>→</span>
-          </div>
+          </button>
 
-          <div className="activity">
+          <button className="activity" onClick={inviteFriends}>
             <div className="activity-icon">👥</div>
             <div className="activity-info">
               <strong>Invite friends</strong>
               <small>Share Pocketly with your friends.</small>
             </div>
             <span>→</span>
-          </div>
+          </button>
         </section>
+      </>
+    );
+  };
 
-        <section className="notice">
-          <strong>Welcome to Pocketly!</strong>
-          <p>Our rewards and advertising features are being prepared. Stay tuned.</p>
-        </section>
+  return (
+    <div className="app">
+      <header className="topbar">
+        <div className="logo">P</div>
+        <div>
+          <h2>Pocketly</h2>
+          <small>Your rewards, your way.</small>
+        </div>
+        <div className="avatar">👤</div>
+      </header>
+
+      <main>
+        {renderContent()}
+
+        {message && (
+          <div className="notice">
+            <p>{message}</p>
+            <button onClick={() => setMessage("")}>Dismiss</button>
+          </div>
+        )}
       </main>
 
       <footer>
-        <span>⌂<small>Home</small></span>
-        <span>🎁<small>Rewards</small></span>
-        <span>👥<small>Invite</small></span>
-        <span>👤<small>Profile</small></span>
+        {["Home", "Rewards", "Invite", "Profile"].map((item, index) => (
+          <button
+            key={item}
+            onClick={() => {
+              setTab(item);
+              setMessage("");
+            }}
+            style={{
+              color: tab === item ? "#16a36a" : "inherit",
+              fontWeight: tab === item ? "bold" : "normal",
+              cursor: "pointer",
+              border: "none",
+              background: "transparent"
+            }}
+          >
+            <span>{["⌂", "🎁", "👥", "👤"][index]}</span>
+            <small>{item}</small>
+          </button>
+        ))}
       </footer>
     </div>
   );
