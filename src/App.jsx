@@ -4,13 +4,47 @@ import React, { useState } from "react";
 function App() {
   const [tab, setTab] = useState("Home");
   const [message, setMessage] = useState("");
+  const [adLoading, setAdLoading] = useState(false);
 
   const notify = (text) => {
     setMessage(text);
   };
 
+  const watchAdvertisements = async () => {
+    if (adLoading) return;
+
+    const showAd = window.show_12353520;
+
+    if (typeof showAd !== "function") {
+      notify("The ad service is loading. Please try again shortly.");
+      return;
+    }
+
+    setAdLoading(true);
+    setMessage("Loading advertisement...");
+
+    try {
+      const result = await showAd();
+
+      if (result?.reward_event_type === "valued") {
+        notify(
+          "Valid ad view detected! Your reward is awaiting secure verification."
+        );
+      } else {
+        notify(
+          "The ad ended, but a rewarded view was not confirmed. No points added."
+        );
+      }
+    } catch (error) {
+      notify("Advertisement unavailable. Please try again later.");
+    } finally {
+      setAdLoading(false);
+    }
+  };
+
   const inviteFriends = async () => {
     const link = "https://t.me/Pocketlyearnbot";
+
     try {
       if (navigator.share) {
         await navigator.share({
@@ -36,9 +70,10 @@ function App() {
             <h1>0 <span>PTS</span></h1>
             <small>Your points will appear here.</small>
           </div>
-          <button className="action-button" onClick={() =>
-            notify("Daily rewards are coming soon!")
-          }>
+          <button
+            className="action-button"
+            onClick={() => notify("Daily rewards are coming soon!")}
+          >
             Check daily rewards
           </button>
         </section>
@@ -85,21 +120,28 @@ function App() {
         <section className="section">
           <h3>Daily activities</h3>
 
-          <button className="activity" onClick={() =>
-            notify("Rewarded advertisements are being connected. Please check back soon.")
-          }>
+          <button
+            className="activity"
+            onClick={watchAdvertisements}
+            disabled={adLoading}
+          >
             <div className="activity-icon">▶️</div>
             <div className="activity-info">
-              <strong>Watch advertisements</strong>
+              <strong>
+                {adLoading ? "Loading advertisement..." : "Watch advertisements"}
+              </strong>
               <small>Watch ads and earn points.</small>
             </div>
             <span>→</span>
           </button>
 
-          <button className="activity" onClick={() => {
-            setTab("Rewards");
-            notify("Welcome to your rewards page!");
-          }}>
+          <button
+            className="activity"
+            onClick={() => {
+              setTab("Rewards");
+              notify("Welcome to your rewards page!");
+            }}
+          >
             <div className="activity-icon">🎁</div>
             <div className="activity-info">
               <strong>Daily rewards</strong>
