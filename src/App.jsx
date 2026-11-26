@@ -1,10 +1,29 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 function App() {
   const [tab, setTab] = useState("Home");
   const [message, setMessage] = useState("");
   const [adLoading, setAdLoading] = useState(false);
+  const [telegramUser, setTelegramUser] = useState(null);
+
+  useEffect(() => {
+    const tg = window.Telegram?.WebApp;
+
+    if (tg) {
+      tg.ready();
+      tg.expand();
+
+      try {
+        tg.setHeaderColor("#ffffff");
+        tg.setBackgroundColor("#f4f7f5");
+      } catch (error) {
+        // Some Telegram versions may not support these settings.
+      }
+
+      setTelegramUser(tg.initDataUnsafe?.user || null);
+    }
+  }, []);
 
   const notify = (text) => {
     setMessage(text);
@@ -16,23 +35,23 @@ function App() {
     const showAd = window.show_12353520;
 
     if (typeof showAd !== "function") {
-      notify("The ad service is loading. Please try again shortly.");
+      notify("The advertisement service is unavailable. Please try again.");
       return;
     }
 
     setAdLoading(true);
-    setMessage("Loading advertisement...");
+    setMessage("Preparing your advertisement...");
 
     try {
       const result = await showAd();
 
       if (result?.reward_event_type === "valued") {
         notify(
-          "Valid ad view detected! Your reward is awaiting secure verification."
+          "Rewarded ad event detected! Your reward is awaiting secure verification."
         );
       } else {
         notify(
-          "The ad ended, but a rewarded view was not confirmed. No points added."
+          "A rewarded ad was not confirmed. No points have been added."
         );
       }
     } catch (error) {
@@ -46,7 +65,14 @@ function App() {
     const link = "https://t.me/Pocketlyearnbot";
 
     try {
-      if (navigator.share) {
+      if (window.Telegram?.WebApp?.openTelegramLink) {
+        window.Telegram.WebApp.openTelegramLink(
+          "https://t.me/share/url?url=" +
+          encodeURIComponent(link) +
+          "&text=" +
+          encodeURIComponent("Join me on Pocketly and explore rewards!")
+        );
+      } else if (navigator.share) {
         await navigator.share({
           title: "Join Pocketly",
           text: "Join me on Pocketly and explore rewards!",
@@ -54,27 +80,32 @@ function App() {
         });
       } else {
         await navigator.clipboard.writeText(link);
-        notify("Invite link copied!");
+        notify("Your Pocketly invite link has been copied!");
       }
     } catch (error) {
-      notify("You can share this link: " + link);
+      notify("Share Pocketly using this link: " + link);
     }
   };
+
+  const firstName = telegramUser?.first_name;
 
   const renderContent = () => {
     if (tab === "Rewards") {
       return (
         <section className="section">
           <h3>Your rewards</h3>
+
           <div className="balance">
+            <p>AVAILABLE POINTS</p>
             <h1>0 <span>PTS</span></h1>
-            <small>Your points will appear here.</small>
+            <small>Your verified rewards will appear here.</small>
           </div>
+
           <button
             className="action-button"
             onClick={() => notify("Daily rewards are coming soon!")}
           >
-            Check daily rewards
+            Explore daily rewards
           </button>
         </section>
       );
@@ -83,8 +114,15 @@ function App() {
     if (tab === "Invite") {
       return (
         <section className="section">
-          <h3>Invite friends</h3>
-          <p>Share Pocketly with your friends.</p>
+          <h3>Grow your network</h3>
+          <p>Invite friends to discover Pocketly with you.</p>
+
+          <div className="balance">
+            <p>YOUR INVITE LINK</p>
+            <h1 style={{ fontSize: "25px" }}>Pocketly</h1>
+            <small>Share Pocketly with your friends.</small>
+          </div>
+
           <button className="action-button" onClick={inviteFriends}>
             Invite friends
           </button>
@@ -96,9 +134,38 @@ function App() {
       return (
         <section className="section">
           <h3>Your profile</h3>
-          <p>Welcome to Pocketly!</p>
-          <p>Account status: New member</p>
-          <p>Points: 0</p>
+
+          <div className="balance">
+            <p>POCKETLY MEMBER</p>
+            <h1 style={{ fontSize: "27px" }}>
+              {firstName || "Welcome"}
+            </h1>
+            <small>
+              {telegramUser?.username
+                ? "@" + telegramUser.username
+                : "Your Pocketly profile"}
+            </small>
+          </div>
+
+          <div className="activity">
+            <div className="activity-icon">👤</div>
+            <div className="activity-info">
+              <strong>Account status</strong>
+              <small>New member</small>
+            </div>
+          </div>
+
+          <div className="activity">
+            <div className="activity-icon">🎁</div>
+            <div className="activity-info">
+              <strong>Points balance</strong>
+              <small>0 PTS</small>
+            </div>
+          </div>
+
+          <p style={{ marginTop: "18px" }}>
+            Your Pocketly account information.
+          </p>
         </section>
       );
     }
@@ -106,19 +173,30 @@ function App() {
     return (
       <>
         <section className="welcome">
-          <p>WELCOME TO POCKETLY</p>
-          <h1>Earn rewards<br />as you explore.</h1>
-          <p>Complete activities and collect points.</p>
+          <p>
+            {firstName
+              ? `WELCOME, ${firstName.toUpperCase()}`
+              : "WELCOME TO POCKETLY"}
+          </p>
+
+          <h1>
+            Your rewards.<br />
+            Your possibilities.
+          </h1>
+
+          <p>
+            Discover activities, explore opportunities and enjoy your Pocketly experience.
+          </p>
         </section>
 
         <section className="balance">
           <p>YOUR POINT BALANCE</p>
           <h1>0 <span>PTS</span></h1>
-          <small>Your rewards will appear here.</small>
+          <small>Your verified rewards will appear here.</small>
         </section>
 
         <section className="section">
-          <h3>Daily activities</h3>
+          <h3>Explore activities</h3>
 
           <button
             className="activity"
@@ -130,31 +208,31 @@ function App() {
               <strong>
                 {adLoading ? "Loading advertisement..." : "Watch advertisements"}
               </strong>
-              <small>Watch ads and earn points.</small>
+              <small>View available rewarded advertisements.</small>
             </div>
             <span>→</span>
           </button>
 
           <button
             className="activity"
-            onClick={() => {
-              setTab("Rewards");
-              notify("Welcome to your rewards page!");
-            }}
+            onClick={() => setTab("Rewards")}
           >
             <div className="activity-icon">🎁</div>
             <div className="activity-info">
-              <strong>Daily rewards</strong>
-              <small>Explore your reward activities.</small>
+              <strong>My rewards</strong>
+              <small>Explore your rewards and points.</small>
             </div>
             <span>→</span>
           </button>
 
-          <button className="activity" onClick={inviteFriends}>
+          <button
+            className="activity"
+            onClick={inviteFriends}
+          >
             <div className="activity-icon">👥</div>
             <div className="activity-info">
               <strong>Invite friends</strong>
-              <small>Share Pocketly with your friends.</small>
+              <small>Share Pocketly with your network.</small>
             </div>
             <span>→</span>
           </button>
@@ -163,15 +241,41 @@ function App() {
     );
   };
 
+  const navigation = [
+    { name: "Home", icon: "⌂" },
+    { name: "Rewards", icon: "🎁" },
+    { name: "Invite", icon: "♧" },
+    { name: "Profile", icon: "👤" }
+  ];
+
   return (
     <div className="app">
       <header className="topbar">
         <div className="logo">P</div>
+
         <div>
           <h2>Pocketly</h2>
           <small>Your rewards, your way.</small>
         </div>
-        <div className="avatar">👤</div>
+
+        <button
+          className="avatar"
+          onClick={() => setTab("Profile")}
+          aria-label="Open profile"
+        >
+          {telegramUser?.photo_url
+            ? <img
+                src={telegramUser.photo_url}
+                alt="Profile"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  borderRadius: "50%"
+                }}
+              />
+            : "👤"}
+        </button>
       </header>
 
       <main>
@@ -180,29 +284,31 @@ function App() {
         {message && (
           <div className="notice">
             <p>{message}</p>
-            <button onClick={() => setMessage("")}>Dismiss</button>
+            <button onClick={() => setMessage("")}>
+              Dismiss
+            </button>
           </div>
         )}
       </main>
 
       <footer>
-        {["Home", "Rewards", "Invite", "Profile"].map((item, index) => (
+        {navigation.map((item) => (
           <button
-            key={item}
+            key={item.name}
             onClick={() => {
-              setTab(item);
+              setTab(item.name);
               setMessage("");
             }}
             style={{
-              color: tab === item ? "#16a36a" : "inherit",
-              fontWeight: tab === item ? "bold" : "normal",
+              color: tab === item.name ? "#087b50" : "#87958c",
+              fontWeight: tab === item.name ? "bold" : "normal",
               cursor: "pointer",
               border: "none",
               background: "transparent"
             }}
           >
-            <span>{["⌂", "🎁", "👥", "👤"][index]}</span>
-            <small>{item}</small>
+            <span>{item.icon}</span>
+            <small>{item.name}</small>
           </button>
         ))}
       </footer>
