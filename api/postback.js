@@ -28,13 +28,7 @@ export default async function handler(req, res) {
       return res.status(500).send("Server configuration missing");
     }
 
-    const {
-      secret,
-      ymid,
-      telegram_id,
-      event_type,
-      reward_event_type
-    } = req.query;
+    const { secret, ymid, event_type, reward_event_type } = req.query;
 
     if (
       typeof secret !== "string" ||
@@ -43,14 +37,27 @@ export default async function handler(req, res) {
       return res.status(403).send("Forbidden");
     }
 
-    if (
-      typeof ymid !== "string" ||
-      !ymid ||
-      ymid.length > 200 ||
-      typeof telegram_id !== "string" ||
-      !/^\d+$/.test(telegram_id)
-    ) {
-      return res.status(400).send("Invalid event data");
+    if (typeof ymid !== "string" || !ymid || ymid.length > 200) {
+      return res.status(400).send("Invalid event ID");
+    }
+
+    // Extract Telegram ID from the beginning of ymid.
+    const separator = ymid.indexOf("_");
+
+    if (separator === -1) {
+      return res.status(400).send("Invalid event ID");
+    }
+
+    const telegramIdText = ymid.slice(0, separator);
+
+    if (!/^\d+$/.test(telegramIdText)) {
+      return res.status(400).send("Invalid Telegram ID");
+    }
+
+    const telegramId = Number(telegramIdText);
+
+    if (!Number.isSafeInteger(telegramId)) {
+      return res.status(400).send("Invalid Telegram ID");
     }
 
     if (event_type !== "impression") {
@@ -59,12 +66,6 @@ export default async function handler(req, res) {
 
     if (reward_event_type !== "valued") {
       return res.status(200).send("No reward");
-    }
-
-    const telegramId = Number(telegram_id);
-
-    if (!Number.isSafeInteger(telegramId)) {
-      return res.status(400).send("Invalid Telegram ID");
     }
 
     const supabase = createClient(
