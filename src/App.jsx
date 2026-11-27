@@ -83,6 +83,7 @@ function App() {
     setMessage(text);
   };
 
+  // MONETAG REWARDED AD FUNCTION
   const watchAdvertisements = async () => {
     if (adLoading) return;
 
@@ -98,20 +99,31 @@ function App() {
       return;
     }
 
+    if (!telegramUser?.id) {
+      notify("Telegram user information is unavailable.");
+      return;
+    }
+
     setAdLoading(true);
     setMessage("Preparing your advertisement...");
 
     try {
-      const result = await showAd();
+      const ymid = `${telegramUser.id}_${crypto.randomUUID()}`;
+
+      const result = await showAd({
+        ymid,
+        requestVar: "home_watch_ad"
+      });
 
       if (result?.reward_event_type === "valued") {
         notify(
-          "Rewarded ad detected! Your reward is awaiting secure verification."
+          "Your ad was confirmed! Your 10-point reward is being processed."
         );
       } else {
-        notify("A rewarded ad was not confirmed. No points were added.");
+        notify("No paid reward was confirmed. No points were added.");
       }
     } catch (error) {
+      console.error("Pocketly ad error:", error);
       notify("Advertisement unavailable. Please try again later.");
     } finally {
       setAdLoading(false);
