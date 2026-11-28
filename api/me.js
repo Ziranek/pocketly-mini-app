@@ -45,7 +45,12 @@ function verifyTelegramInitData(initData, botToken) {
   }
 
   try {
-    return JSON.parse(params.get("user") || "null");
+    const user = JSON.parse(params.get("user") || "null");
+
+    return {
+      user,
+      startParam: params.get("start_param")
+    };
   } catch {
     return null;
   }
@@ -57,11 +62,16 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { TELEGRAM_BOT_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } =
-      process.env;
+    const {
+      TELEGRAM_BOT_TOKEN,
+      SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY
+    } = process.env;
 
     if (!TELEGRAM_BOT_TOKEN || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-      return res.status(500).json({ error: "Server configuration is incomplete" });
+      return res.status(500).json({
+        error: "Server configuration is incomplete"
+      });
     }
 
     const initData = req.body?.initData;
@@ -70,10 +80,17 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Telegram data is missing" });
     }
 
-    const user = verifyTelegramInitData(initData, TELEGRAM_BOT_TOKEN);
+    const verified = verifyTelegramInitData(
+      initData,
+      TELEGRAM_BOT_TOKEN
+    );
+
+    const user = verified?.user;
 
     if (!user || !Number.isSafeInteger(user.id)) {
-      return res.status(401).json({ error: "Telegram verification failed" });
+      return res.status(401).json({
+        error: "Telegram verification failed"
+      });
     }
 
     const supabase = createClient(
@@ -87,29 +104,122 @@ export default async function handler(req, res) {
       }
     );
 
-    const profile = {
-      telegram_id: user.id,
-      first_name: user.first_name || null,
-      last_name: user.last_name || null,
-      username: user.username || null,
-      photo_url: user.photo_url || null,
-      updated_at: new Date().toISOString()
-    };
-
-    const { data, error } = await supabase
+    // Check whether this Telegram user already has an account.
+    const { data: existingProfile, error: lookupError } = await supabase
       .from("profiles")
-      .upsert(profile, { onConflict: "telegram_id" })
-      .select("telegram_id, first_name, last_name, username, photo_url, points")
-      .single();
+      .select("telegram_id")
+      .eq("telegram_id", user.id)
+      .maybeSingle();
 
-    if (error) {
-      console.error("Pocketly profile error:", error.message);
-      return res.status(500).json({ error: "Could not save profile" });
+    if (lookupError) {
+      console.error("Pocketly profile lookup:", lookupError.message);
+      return res.status(500).json({
+        error: "Could not check profile"
+      });
     }
 
-    return res.status(200).json({ success: true, profile: data });
+    let profile;
+
+    if (existingProfile) {
+      // Existing accounts keep their original referral relationship.
+      const { data, error } = await supabase
+        .from("profiles")
+        .update({
+          first_name: user.first_name || null,
+          last_name: user.last_name || null,
+          username: user.username || null,
+          photo_url: user.photo_url || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq("telegram_id", user.id)
+        .select(
+          "telegram_id, first_name, last_name, username, photo_url, points"
+        )
+        .single();
+
+      if (error) {
+        console.error("Pocketly profile update:", error.message);
+        return res.status(500).json({
+          error: "Could not update profile"
+        });
+      }
+
+      profile = data;
+    } else {
+      // Only a new account can receive an inviter.
+      let referrerId = null;
+      const startParam = verified.startParam;
+
+      if (
+        typeof startParam === "string" &&
+        /^ref_\d+$/.test(startParam)
+      ) {
+        const candidate = Number(startParam.slice(4));
+
+        if (
+          Number.isSafeInteger(candidate) &&
+          candidate !== user.id
+        ) {
+          const { data: inviter, error: inviterError } = await supabase
+            .from("profiles")
+            .select("telegram_id")
+            .eq("telegram_id", candidate)
+            .maybeSingle();
+
+          if (inviterError) {
+            console.error("Pocketly inviter lookup:", inviterError.message);
+            return res.status(500).json({
+              error: "Could not verify inviter"
+            });
+          }
+
+          if (inviter) {
+            referrerId = candidate;
+          }
+        }
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .insert({
+          telegram_id: user.id,
+          first_name: user.first_name || null,
+          last_name: user.last_name || null,
+          username: user.username || null,
+          photo_url: user.photo_url || null,
+          referred_by_telegram_id: referrerId
+        })
+        .select(
+          "telegram_id, first_name, last_name, username, photo_url, points"
+        )
+        .single();
+
+      if (error) {
+        console.error("Pocketly profile creation:", error.message);
+
+        if (error.code === "23505") {
+          return res.status(409).json({
+            error: "Profile was created simultaneously. Please reopen Pocketly."
+          });
+        }
+
+        return res.status(500).json({
+          error: "Could not create profile"
+        });
+      }
+
+      profile = data;
+    }
+
+    return res.status(200).json({
+      success: true,
+      profile
+    });
+
   } catch (error) {
     console.error("Pocketly API error:", error.message);
-    return res.status(500).json({ error: "Something went wrong" });
+    return res.status(500).json({
+      error: "Something went wrong"
+    });
   }
 }
