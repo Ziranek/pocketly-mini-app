@@ -41,7 +41,6 @@ export default async function handler(req, res) {
       return res.status(400).send("Invalid event ID");
     }
 
-    // Extract Telegram ID from the beginning of ymid.
     const separator = ymid.indexOf("_");
 
     if (separator === -1) {
@@ -92,8 +91,29 @@ export default async function handler(req, res) {
       return res.status(500).send("Reward processing failed");
     }
 
+    // Check referral eligibility after every valid valued callback.
+    // This also allows a retry to complete a referral reward if needed.
+    const { data: referralData, error: referralError } =
+      await supabase.rpc(
+        "reward_referral",
+        {
+          p_referred_telegram_id: telegramId
+        }
+      );
+
+    if (referralError) {
+      console.error("Pocketly referral error:", referralError.message);
+      return res.status(500).send("Referral processing failed");
+    }
+
+    if (referralData === true) {
+      return res.status(200).send(
+        "10 points credited; inviter received 50 referral points"
+      );
+    }
+
     return res.status(200).send(
-      data ? "10 points credited" : "Duplicate event"
+      data ? "10 points credited" : "Duplicate or daily limit reached"
     );
 
   } catch (error) {
