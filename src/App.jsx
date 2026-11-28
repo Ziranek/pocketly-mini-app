@@ -8,6 +8,15 @@ function App() {
   const [telegramUser, setTelegramUser] = useState(null);
   const [points, setPoints] = useState(0);
   const [connectionStatus, setConnectionStatus] = useState("Connecting...");
+  const [referrals, setReferrals] = useState([]);
+  const [referralCount, setReferralCount] = useState(0);
+  const [qualifiedReferrals, setQualifiedReferrals] = useState(0);
+
+  const updateReferralData = (result) => {
+    setReferrals(result.referrals || []);
+    setReferralCount(Number(result.referralCount) || 0);
+    setQualifiedReferrals(Number(result.qualifiedReferrals) || 0);
+  };
 
   useEffect(() => {
     let active = true;
@@ -26,7 +35,7 @@ function App() {
       try {
         tg.setHeaderColor("#ffffff");
         tg.setBackgroundColor("#f4f7f5");
-      } catch (error) {
+      } catch {
         console.log("Telegram display settings unavailable.");
       }
 
@@ -42,12 +51,8 @@ function App() {
       try {
         const response = await fetch("/api/me", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            initData: tg.initData
-          })
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ initData: tg.initData })
         });
 
         const result = await response.json();
@@ -58,6 +63,7 @@ function App() {
 
         if (active) {
           setPoints(Number(result.profile.points) || 0);
+          updateReferralData(result);
           setConnectionStatus("Verified and connected");
         }
       } catch (error) {
@@ -79,40 +85,38 @@ function App() {
     };
   }, []);
 
-  const notify = (text) => {
-    setMessage(text);
-  };
+  const notify = (text) => setMessage(text);
 
-  // Refresh the balance directly from the verified backend.
   const refreshBalance = async () => {
     const tg = window.Telegram?.WebApp;
 
     if (!tg?.initData) return null;
 
-    const response = await fetch("/api/me", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        initData: tg.initData
-      })
-    });
+    try {
+      const response = await fetch("/api/me", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ initData: tg.initData })
+      });
 
-    if (!response.ok) return null;
+      if (!response.ok) return null;
 
-    const result = await response.json();
+      const result = await response.json();
 
-    if (!result.success) return null;
+      if (!result.success) return null;
 
-    const latestPoints = Number(result.profile.points) || 0;
+      const latestPoints = Number(result.profile.points) || 0;
 
-    setPoints(latestPoints);
+      setPoints(latestPoints);
+      updateReferralData(result);
 
-    return latestPoints;
+      return latestPoints;
+    } catch (error) {
+      console.error("Pocketly refresh error:", error);
+      return null;
+    }
   };
 
-  // MONETAG REWARDED AD FUNCTION
   const watchAdvertisements = async () => {
     if (adLoading) return;
 
@@ -183,28 +187,65 @@ function App() {
     }
   };
 
-  // UNIQUE REFERRAL LINK
   const getInviteLink = () => {
-    if (!telegramUser?.id) {
-      return "https://t.me/Pocketlyearnbot";
-    }
+    if (!telegramUser?.id) return "";
 
     return `https://t.me/Pocketlyearnbot?start=ref_${telegramUser.id}`;
+  };
+
+  const copyInviteLink = async () => {
+    const link = getInviteLink();
+
+    if (!link) {
+      notify("Your referral link is not ready yet.");
+      return;
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(link);
+        notify("Your personal referral link has been copied!");
+      } else {
+        const input = document.createElement("textarea");
+        input.value = link;
+        input.style.position = "fixed";
+        input.style.opacity = "0";
+        document.body.appendChild(input);
+        input.select();
+
+        const copied = document.execCommand("copy");
+        document.body.removeChild(input);
+
+        notify(
+          copied
+            ? "Your referral link has been copied!"
+            : "Please copy your referral link manually: " + link
+        );
+      }
+    } catch {
+      notify("Copy failed. Please copy your link manually: " + link);
+    }
   };
 
   const inviteFriends = async () => {
     const link = getInviteLink();
 
+    if (!link) {
+      notify("Your referral link is not ready yet.");
+      return;
+    }
+
+    const shareUrl =
+      "https://t.me/share/url?url=" +
+      encodeURIComponent(link) +
+      "&text=" +
+      encodeURIComponent(
+        "Join me on Pocketly! Complete rewarded ads and explore rewards."
+      );
+
     try {
       if (window.Telegram?.WebApp?.openTelegramLink) {
-        window.Telegram.WebApp.openTelegramLink(
-          "https://t.me/share/url?url=" +
-          encodeURIComponent(link) +
-          "&text=" +
-          encodeURIComponent(
-            "Join me on Pocketly! Complete rewarded ads and explore rewards."
-          )
-        );
+        window.Telegram.WebApp.openTelegramLink(shareUrl);
       } else if (navigator.share) {
         await navigator.share({
           title: "Join Pocketly",
@@ -212,11 +253,10 @@ function App() {
           url: link
         });
       } else {
-        await navigator.clipboard.writeText(link);
-        notify("Your personal Pocketly invite link has been copied!");
+        await copyInviteLink();
       }
-    } catch (error) {
-      notify("Share Pocketly using this link: " + link);
+    } catch {
+      notify("You can share your personal referral link: " + link);
     }
   };
 
@@ -270,24 +310,149 @@ function App() {
     if (tab === "Invite") {
       return (
         <section className="section">
-          <h3>Grow your network</h3>
-          <p>Invite friends to discover Pocketly with you.</p>
+          <h3>Invite and earn</h3>
+          <p>Share Pocketly with friends and earn referral rewards.</p>
 
           <div className="balance">
-            <p>YOUR PERSONAL INVITE LINK</p>
-            <h1 style={{ fontSize: "20px", wordBreak: "break-word" }}>
-              {telegramUser?.id
-                ? `ref_${telegramUser.id}`
-                : "Loading invite link..."}
-            </h1>
-            <small>
+            <p>YOUR PERSONAL REFERRAL LINK</p>
+
+            <div
+              style={{
+                background: "#f4f7f5",
+                borderRadius: "12px",
+                padding: "13px",
+                marginTop: "12px",
+                wordBreak: "break-all",
+                fontSize: "13px",
+                color: "#087b50",
+                fontWeight: 700
+              }}
+            >
+              {getInviteLink() || "Loading your referral link..."}
+            </div>
+
+            <button
+              className="action-button"
+              onClick={copyInviteLink}
+              style={{ marginTop: "14px" }}
+            >
+              Copy referral link
+            </button>
+
+            <button
+              className="action-button"
+              onClick={inviteFriends}
+              style={{
+                marginTop: "10px",
+                background: "#192c22"
+              }}
+            >
+              Invite friends
+            </button>
+
+            <small style={{ display: "block", marginTop: "15px" }}>
               Your friend must complete 20 successfully rewarded ads
               before you receive 50 referral points.
             </small>
           </div>
 
-          <button className="action-button" onClick={inviteFriends}>
-            Invite friends
+          <h3 style={{ marginTop: "25px" }}>Referral overview</h3>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "12px",
+              marginTop: "14px"
+            }}
+          >
+            <div className="balance">
+              <p>TOTAL REFERRALS</p>
+              <h1>{referralCount}</h1>
+            </div>
+
+            <div className="balance">
+              <p>QUALIFIED</p>
+              <h1>{qualifiedReferrals}</h1>
+            </div>
+          </div>
+
+          <div className="balance" style={{ marginTop: "12px" }}>
+            <p>TOTAL REFERRAL POINTS EARNED</p>
+            <h1>{(qualifiedReferrals * 50).toLocaleString()} <span>PTS</span></h1>
+          </div>
+
+          <h3 style={{ marginTop: "25px" }}>People you've invited</h3>
+
+          {referrals.length === 0 ? (
+            <div className="notice" style={{ marginTop: "14px" }}>
+              <p>
+                You haven't referred anyone yet. Share your personal
+                link to start growing your network!
+              </p>
+            </div>
+          ) : (
+            <div style={{ marginTop: "14px" }}>
+              {referrals.map((person) => (
+                <div
+                  className="activity"
+                  key={person.telegram_id}
+                  style={{ marginBottom: "10px" }}
+                >
+                  <div className="activity-icon">👤</div>
+
+                  <div className="activity-info">
+                    <strong>{person.name}</strong>
+                    <small>
+                      {person.ads_completed} of 20 rewarded ads completed
+                    </small>
+
+                    <div
+                      style={{
+                        height: "6px",
+                        background: "#e7eee9",
+                        borderRadius: "10px",
+                        overflow: "hidden",
+                        marginTop: "8px"
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: "100%",
+                          width: `${Math.min(person.ads_completed / 20 * 100, 100)}%`,
+                          background: "#087b50",
+                          borderRadius: "10px"
+                        }}
+                      />
+                    </div>
+
+                    <small
+                      style={{
+                        display: "block",
+                        marginTop: "7px",
+                        color: person.qualified ? "#087b50" : "#87958c",
+                        fontWeight: 700
+                      }}
+                    >
+                      {person.qualified
+                        ? "Qualified · 50 points earned"
+                        : "In progress"}
+                    </small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button
+            className="action-button"
+            onClick={async () => {
+              await refreshBalance();
+              notify("Your referral information has been refreshed.");
+            }}
+            style={{ marginTop: "18px" }}
+          >
+            Refresh referral list
           </button>
         </section>
       );
@@ -379,25 +544,21 @@ function App() {
           </h3>
 
           <ProfileRow icon="👤" label="Full name" value={fullName} />
-
           <ProfileRow
             icon="✉️"
             label="Username"
             value={username ? `@${username}` : null}
           />
-
           <ProfileRow
             icon="🆔"
             label="Telegram ID"
             value={telegramId ? String(telegramId) : null}
           />
-
           <ProfileRow
             icon="🌍"
             label="Language"
             value={language ? language.toUpperCase() : null}
           />
-
           <ProfileRow
             icon="🔐"
             label="Verification"
@@ -524,9 +685,7 @@ function App() {
         {message && (
           <div className="notice">
             <p>{message}</p>
-            <button onClick={() => setMessage("")}>
-              Dismiss
-            </button>
+            <button onClick={() => setMessage("")}>Dismiss</button>
           </div>
         )}
       </main>
