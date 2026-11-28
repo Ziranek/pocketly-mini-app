@@ -83,6 +83,35 @@ function App() {
     setMessage(text);
   };
 
+  // Refresh the balance directly from the verified backend.
+  const refreshBalance = async () => {
+    const tg = window.Telegram?.WebApp;
+
+    if (!tg?.initData) return null;
+
+    const response = await fetch("/api/me", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        initData: tg.initData
+      })
+    });
+
+    if (!response.ok) return null;
+
+    const result = await response.json();
+
+    if (!result.success) return null;
+
+    const latestPoints = Number(result.profile.points) || 0;
+
+    setPoints(latestPoints);
+
+    return latestPoints;
+  };
+
   // MONETAG REWARDED AD FUNCTION
   const watchAdvertisements = async () => {
     if (adLoading) return;
@@ -108,6 +137,7 @@ function App() {
     setMessage("Preparing your advertisement...");
 
     try {
+      const startingPoints = points;
       const ymid = `${telegramUser.id}_${crypto.randomUUID()}`;
 
       const result = await showAd({
@@ -115,12 +145,35 @@ function App() {
         requestVar: "home_watch_ad"
       });
 
-      if (result?.reward_event_type === "valued") {
-        notify(
-          "Your ad was confirmed! Your 10-point reward is being processed."
-        );
-      } else {
+      if (result?.reward_event_type !== "valued") {
         notify("No paid reward was confirmed. No points were added.");
+        return;
+      }
+
+      notify("Ad completed. Waiting for your reward confirmation...");
+
+      let rewardReceived = false;
+
+      for (let attempt = 0; attempt < 12; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        const latestPoints = await refreshBalance();
+
+        if (
+          latestPoints !== null &&
+          latestPoints >= startingPoints + 10
+        ) {
+          rewardReceived = true;
+          break;
+        }
+      }
+
+      if (rewardReceived) {
+        notify("Success! Your 10-point reward has been added.");
+      } else {
+        notify(
+          "Your ad was completed. Your reward is still being processed. Please check your balance again shortly."
+        );
       }
     } catch (error) {
       console.error("Pocketly ad error:", error);
@@ -130,8 +183,17 @@ function App() {
     }
   };
 
+  // UNIQUE REFERRAL LINK
+  const getInviteLink = () => {
+    if (!telegramUser?.id) {
+      return "https://t.me/Pocketlyearnbot";
+    }
+
+    return `https://t.me/Pocketlyearnbot?start=ref_${telegramUser.id}`;
+  };
+
   const inviteFriends = async () => {
-    const link = "https://t.me/Pocketlyearnbot";
+    const link = getInviteLink();
 
     try {
       if (window.Telegram?.WebApp?.openTelegramLink) {
@@ -139,17 +201,19 @@ function App() {
           "https://t.me/share/url?url=" +
           encodeURIComponent(link) +
           "&text=" +
-          encodeURIComponent("Join me on Pocketly and explore rewards!")
+          encodeURIComponent(
+            "Join me on Pocketly! Complete rewarded ads and explore rewards."
+          )
         );
       } else if (navigator.share) {
         await navigator.share({
           title: "Join Pocketly",
-          text: "Join me on Pocketly and explore rewards!",
+          text: "Join me on Pocketly!",
           url: link
         });
       } else {
         await navigator.clipboard.writeText(link);
-        notify("Your Pocketly invite link has been copied!");
+        notify("Your personal Pocketly invite link has been copied!");
       }
     } catch (error) {
       notify("Share Pocketly using this link: " + link);
@@ -210,9 +274,16 @@ function App() {
           <p>Invite friends to discover Pocketly with you.</p>
 
           <div className="balance">
-            <p>YOUR INVITE LINK</p>
-            <h1 style={{ fontSize: "25px" }}>Pocketly</h1>
-            <small>Share Pocketly with your friends.</small>
+            <p>YOUR PERSONAL INVITE LINK</p>
+            <h1 style={{ fontSize: "20px", wordBreak: "break-word" }}>
+              {telegramUser?.id
+                ? `ref_${telegramUser.id}`
+                : "Loading invite link..."}
+            </h1>
+            <small>
+              Your friend must complete 20 successfully rewarded ads
+              before you receive 50 referral points.
+            </small>
           </div>
 
           <button className="action-button" onClick={inviteFriends}>
@@ -391,11 +462,11 @@ function App() {
             <span>→</span>
           </button>
 
-          <button className="activity" onClick={inviteFriends}>
+          <button className="activity" onClick={() => setTab("Invite")}>
             <div className="activity-icon">👥</div>
             <div className="activity-info">
               <strong>Invite friends</strong>
-              <small>Share Pocketly with your network.</small>
+              <small>Share your personal Pocketly referral link.</small>
             </div>
             <span>→</span>
           </button>
