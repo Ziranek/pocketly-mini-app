@@ -45,10 +45,8 @@ function verifyTelegramInitData(initData, botToken) {
   }
 
   try {
-    const user = JSON.parse(params.get("user") || "null");
-
     return {
-      user,
+      user: JSON.parse(params.get("user") || "null"),
       startParam: params.get("start_param")
     };
   } catch {
@@ -104,7 +102,6 @@ export default async function handler(req, res) {
       }
     );
 
-    // Check whether this Telegram user already has an account.
     const { data: existingProfile, error: lookupError } = await supabase
       .from("profiles")
       .select("telegram_id")
@@ -113,15 +110,12 @@ export default async function handler(req, res) {
 
     if (lookupError) {
       console.error("Pocketly profile lookup:", lookupError.message);
-      return res.status(500).json({
-        error: "Could not check profile"
-      });
+      return res.status(500).json({ error: "Could not check profile" });
     }
 
     let profile;
 
     if (existingProfile) {
-      // Existing accounts keep their original referral relationship.
       const { data, error } = await supabase
         .from("profiles")
         .update({
@@ -132,21 +126,16 @@ export default async function handler(req, res) {
           updated_at: new Date().toISOString()
         })
         .eq("telegram_id", user.id)
-        .select(
-          "telegram_id, first_name, last_name, username, photo_url, points"
-        )
+        .select("telegram_id, first_name, last_name, username, photo_url, points")
         .single();
 
       if (error) {
         console.error("Pocketly profile update:", error.message);
-        return res.status(500).json({
-          error: "Could not update profile"
-        });
+        return res.status(500).json({ error: "Could not update profile" });
       }
 
       profile = data;
     } else {
-      // Only a new account can receive an inviter.
       let referrerId = null;
       const startParam = verified.startParam;
 
@@ -168,14 +157,10 @@ export default async function handler(req, res) {
 
           if (inviterError) {
             console.error("Pocketly inviter lookup:", inviterError.message);
-            return res.status(500).json({
-              error: "Could not verify inviter"
-            });
+            return res.status(500).json({ error: "Could not verify inviter" });
           }
 
-          if (inviter) {
-            referrerId = candidate;
-          }
+          if (inviter) referrerId = candidate;
         }
       }
 
@@ -189,9 +174,7 @@ export default async function handler(req, res) {
           photo_url: user.photo_url || null,
           referred_by_telegram_id: referrerId
         })
-        .select(
-          "telegram_id, first_name, last_name, username, photo_url, points"
-        )
+        .select("telegram_id, first_name, last_name, username, photo_url, points")
         .single();
 
       if (error) {
@@ -203,23 +186,83 @@ export default async function handler(req, res) {
           });
         }
 
-        return res.status(500).json({
-          error: "Could not create profile"
-        });
+        return res.status(500).json({ error: "Could not create profile" });
       }
 
       profile = data;
     }
 
+    // Fetch everyone who registered using this user's referral link.
+    const { data: referredUsers, error: referredError } = await supabase
+      .from("profiles")
+      .select("telegram_id, first_name, last_name, username")
+      .eq("referred_by_telegram_id", user.id);
+
+    if (referredError) {
+      console.error("Pocketly referred users:", referredError.message);
+      return res.status(500).json({ error: "Could not load referrals" });
+    }
+
+    const referredIds = (referredUsers || []).map(
+      referred => referred.telegram_id
+    );
+
+    let adCounts = {};
+    let rewardedIds = new Set();
+
+    if (referredIds.length > 0) {
+      const { data: events, error: eventsError } = await supabase
+        .from("reward_events")
+        .select("telegram_id")
+        .in("telegram_id", referredIds)
+        .eq("status", "credited");
+
+      if (eventsError) {
+        console.error("Pocketly referral ad counts:", eventsError.message);
+        return res.status(500).json({ error: "Could not load referral progress" });
+      }
+
+      for (const event of events || []) {
+        adCounts[event.telegram_id] =
+          (adCounts[event.telegram_id] || 0) + 1;
+      }
+
+      const { data: rewards, error: rewardsError } = await supabase
+        .from("referrals")
+        .select("referred_telegram_id")
+        .eq("referrer_telegram_id", user.id);
+
+      if (rewardsError) {
+        console.error("Pocketly referral rewards:", rewardsError.message);
+        return res.status(500).json({ error: "Could not load referral rewards" });
+      }
+
+      rewardedIds = new Set(
+        (rewards || []).map(item => item.referred_telegram_id)
+      );
+    }
+
+    const referralList = (referredUsers || []).map(referred => ({
+      telegram_id: referred.telegram_id,
+      name:
+        [referred.first_name, referred.last_name].filter(Boolean).join(" ") ||
+        (referred.username ? `@${referred.username}` : "Pocketly user"),
+      ads_completed: adCounts[referred.telegram_id] || 0,
+      qualified: rewardedIds.has(referred.telegram_id),
+      points_earned: rewardedIds.has(referred.telegram_id) ? 50 : 0
+    }));
+
     return res.status(200).json({
       success: true,
-      profile
+      profile,
+      referralLink: `https://t.me/Pocketlyearnbot?start=ref_${user.id}`,
+      referrals: referralList,
+      referralCount: referralList.length,
+      qualifiedReferrals: referralList.filter(item => item.qualified).length
     });
 
   } catch (error) {
     console.error("Pocketly API error:", error.message);
-    return res.status(500).json({
-      error: "Something went wrong"
-    });
+    return res.status(500).json({ error: "Something went wrong" });
   }
 }
