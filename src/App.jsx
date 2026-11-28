@@ -201,29 +201,44 @@ function App() {
       return;
     }
 
+    let copied = false;
+
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(link);
-        notify("Your personal referral link has been copied!");
-      } else {
-        const input = document.createElement("textarea");
-        input.value = link;
-        input.style.position = "fixed";
-        input.style.opacity = "0";
-        document.body.appendChild(input);
-        input.select();
-
-        const copied = document.execCommand("copy");
-        document.body.removeChild(input);
-
-        notify(
-          copied
-            ? "Your referral link has been copied!"
-            : "Please copy your referral link manually: " + link
-        );
+        copied = true;
       }
-    } catch {
-      notify("Copy failed. Please copy your link manually: " + link);
+    } catch (error) {
+      console.log("Clipboard API unavailable.");
+    }
+
+    if (!copied) {
+      const input = document.createElement("textarea");
+      input.value = link;
+      input.setAttribute("readonly", "");
+      input.style.position = "fixed";
+      input.style.left = "-9999px";
+      document.body.appendChild(input);
+      input.select();
+
+      try {
+        copied = document.execCommand("copy");
+      } catch {
+        copied = false;
+      }
+
+      document.body.removeChild(input);
+    }
+
+    if (copied) {
+      notify("Referral link copied successfully!");
+
+      const tg = window.Telegram?.WebApp;
+      if (tg?.showAlert) {
+        tg.showAlert("Referral link copied successfully!");
+      }
+    } else {
+      notify("Copy this referral link manually: " + link);
     }
   };
 
@@ -235,28 +250,36 @@ function App() {
       return;
     }
 
+    const shareText =
+      "Join me on Pocketly! Complete rewarded ads and explore rewards.";
+
     const shareUrl =
       "https://t.me/share/url?url=" +
       encodeURIComponent(link) +
       "&text=" +
-      encodeURIComponent(
-        "Join me on Pocketly! Complete rewarded ads and explore rewards."
-      );
+      encodeURIComponent(shareText);
+
+    const tg = window.Telegram?.WebApp;
 
     try {
-      if (window.Telegram?.WebApp?.openTelegramLink) {
-        window.Telegram.WebApp.openTelegramLink(shareUrl);
-      } else if (navigator.share) {
+      if (tg?.openTelegramLink) {
+        tg.openTelegramLink(shareUrl);
+        return;
+      }
+
+      if (navigator.share) {
         await navigator.share({
           title: "Join Pocketly",
-          text: "Join me on Pocketly!",
+          text: shareText,
           url: link
         });
-      } else {
-        await copyInviteLink();
+        return;
       }
-    } catch {
-      notify("You can share your personal referral link: " + link);
+
+      await copyInviteLink();
+    } catch (error) {
+      console.error("Pocketly sharing error:", error);
+      notify("Your referral link is: " + link);
     }
   };
 
@@ -379,7 +402,9 @@ function App() {
 
           <div className="balance" style={{ marginTop: "12px" }}>
             <p>TOTAL REFERRAL POINTS EARNED</p>
-            <h1>{(qualifiedReferrals * 50).toLocaleString()} <span>PTS</span></h1>
+            <h1>
+              {(qualifiedReferrals * 50).toLocaleString()} <span>PTS</span>
+            </h1>
           </div>
 
           <h3 style={{ marginTop: "25px" }}>People you've invited</h3>
